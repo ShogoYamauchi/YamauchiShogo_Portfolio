@@ -1,0 +1,65 @@
+//**************************
+//   VHS風ポストプロセス
+//**************************
+
+/*入力*/
+// float2 SceneTexSampler
+// float2 Resolution
+// float2 UV
+// float Time
+// float wobble_intensity
+// float grade_intensity
+// float line_intensity
+// float vignette_intensity
+// Texture2D DustTexture
+// float2 DustTextureResolution
+// float NoiseStrength
+// float NoiseScroll
+// float ScratchDensity
+float PI = 3.1415926535;
+
+/*疑似ランダム*/
+float rand_val = frac(sin(dot(float2(Time, UV.y), float2(12.9898,78.233))) * 43758.5453);
+
+/*wobble*/
+float2 wobbl = float2(wobble_intensity * rand_val, 0.0);
+float2 uv1 = clamp(UV + wobbl, 0.0, 1.0);
+float2 uv2 = clamp((UV + wobbl * 1.5) * 1.005, 0.0, 1.0);
+
+/*SceneColor 取得*/
+float4 color1 = float4(SceneTextureLookup(uv1 + wobbl, 14, false).rgb, 1.0);
+float4 color2 = float4(SceneTextureLookup(uv2 + wobbl * 1.5 * 1.005, 14, false).rgb, 1.0);
+float4 baseColor = SceneTexSampler;
+float4 color = float4(baseColor.rgb + (color1.rgb + color2.rgb) * wobble_intensity, 1.0);
+color.b = pow(color.b, 0.67);
+color.rgb = lerp(baseColor.rgb, color.rgb, grade_intensity);
+
+/*スキャンライン*/
+float s_val = ((sin(2.0 * PI * UV.y + Time * 20.0) + sin(2.0 * PI * UV.y)) * 0.5) * 0.015 * sin(Time);
+color.rgb += s_val;
+
+/*ノイズライン*/
+float ival = Resolution.y / 0.001;
+float r = frac(sin(dot(float2(Time, UV.y), float2(12.9898,78.233))) * 43758.5453);
+float on = floor(fmod(UV.y + (Time * r * 1000.0), (ival + line_intensity)) / ival);
+
+/*縦線ノイズ*/
+float val = frac(UV.x * 2.5 + Time * 1.0);
+float lineNoise = step(ScratchDensity, val);
+
+/*NoiseSample*/
+float2 noiseUV = fmod(UV + float2( 0.0, NoiseScroll * Time), DustTextureResolution);
+noiseUV.y = frac(noiseUV.y);
+float value = Texture2DSample(DustTexture, DustTextureSampler, noiseUV / Resolution).r;
+float wh = pow(value, 7.0)  * NoiseStrength * on;
+
+color = float4(min(1.0, color.r + wh + lineNoise),
+               min(1.0, color.g + wh + lineNoise),
+               min(1.0, color.b + wh + lineNoise),
+               1.0);
+
+/*ビネット*/
+float vig = 1.0 - sin(PI * UV.x) * sin(PI * UV.y);
+color.rgb -= vig * vignette_intensity;
+
+return color;
